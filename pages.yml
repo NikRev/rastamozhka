@@ -1,0 +1,58 @@
+name: Сайт и курс ЦБ
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '5 6 * * *'
+    - cron: '5 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Курс ЦБ
+        if: github.event_name != 'push'
+        run: node fx.mjs || echo "Курс не обновился, выкладываю сохранённый"
+
+      - name: Сохранить курс в репозитории
+        if: github.event_name != 'push'
+        run: |
+          if git diff --quiet; then echo "Курс без изменений"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Курс ЦБ на $(node -p "require('./config.json').fx.date")"
+          git push
+
+      - name: Собрать сайт
+        run: |
+          mkdir _site
+          cp index.html privacy.html style.css icon.png favicon.png config.json _site/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
